@@ -3,5 +3,5 @@
 
 void func(void)
 {
-
+BOB
 }
