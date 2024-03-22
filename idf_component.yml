@@ -1,4 +1,3 @@
 version: "0.0.1"
 description: "ESP IDF component version of Donald MQTT Arduino library"
-url: "https://donaldfraser.visualstudio.com/_git/Donald_ESPComp_MQTT"
 license: "MIT" 

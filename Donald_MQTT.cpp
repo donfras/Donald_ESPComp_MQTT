@@ -45,15 +45,15 @@ static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
 #define EXAMPLE_ESP_WIFI_PASS      "Tx7cKXMTknmdPr"
 
 DonaldWIFI::DonaldWIFI(string clientID) 
-            :  cachedRSSI(-100),  previousWiFiStrengthMillis(0), WifiStrengthInterval(30000000), previousMQTTConnectPollMillis(0), MQTTConnectPollInterval(10000000), autoUpdate(false)
+            :  cachedRSSI(-100), WifiStrengthInterval(30000000), MQTTConnectPollInterval(10000000), autoUpdate(false)
 {
   this->mQTTClientID = clientID;
 
   commandsTopic = commandsTopicBase + "/" + mQTTClientID;
-  debugFunction = 0;
-
-  DebugMessage("Connecting to " + ssid);
-
+  
+  CreateTimer(reportWifiStatusTimer, reportWifiStatusTimerTask, WifiStrengthInterval, "Donald_MQTT reportWifiStatusTimer"); 
+  CreateTimer(reportWifiStatusTimer, mQTTReconnectTimerTask, MQTTConnectPollInterval, "Donald_MQTT mQTTReconnectTimer"); 
+  
 	esp_log_level_set("mqtt_client", ESP_LOG_VERBOSE);
 	esp_log_level_set("mqtt_example", ESP_LOG_VERBOSE);
 	esp_log_level_set("transport_base", ESP_LOG_VERBOSE);
@@ -61,34 +61,28 @@ DonaldWIFI::DonaldWIFI(string clientID)
 	esp_log_level_set("transport", ESP_LOG_VERBOSE);
 	esp_log_level_set("outbox", ESP_LOG_VERBOSE);
 
-	ESP_ERROR_CHECK(nvs_flash_init());
-	ESP_ERROR_CHECK(esp_netif_init());
-	ESP_ERROR_CHECK(esp_event_loop_create_default());
+  ESP_ERROR_CHECK(nvs_flash_init());
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
 	
-
   Begin();
-
+  
   uint8_t MACArray[6];
   esp_wifi_get_mac(WIFI_IF_STA, MACArray);
   MAC = MACTostring(MACArray);
   SetupMQTT();
 }
 
-// Registers a client application debug message function. This library does not write 
-// debugging output to Serial, but allows the client to optionally provide its own function
-// This library will write its debug messages by calling the client provided function
-void DonaldWIFI::OnDebugMessage(debugMessageFunction f)
+void DonaldWIFI::CreateTimer(esp_timer_handle_t timer, esp_timer_cb_t callback, uint64_t period, const char* debugName)
 {
-  debugFunction = f;
-}
-
-// Writes debug information to an optional client application provided function
-void DonaldWIFI::DebugMessage(string message)
-{
-  if(debugFunction != 0)
-  {
-    debugFunction(message);
-  }
+  esp_timer_create_args_t timerArgs = {};
+  timerArgs.callback = callback;
+  timerArgs.arg = this;
+  timerArgs.dispatch_method = ESP_TIMER_TASK;
+  timerArgs.name = debugName;
+  timerArgs.skip_unhandled_events = true;
+  ESP_ERROR_CHECK(esp_timer_create(&timerArgs, &timer));
+  ESP_ERROR_CHECK(esp_timer_start_periodic(timer, period));
 }
 
 // Returns all parameters, settings, state for debug purposes
@@ -153,38 +147,34 @@ string DonaldWIFI::MACTostring(uint8_t MACArray[6])
   return s;
 }
 
-// Public method which needs to be called from a client application to as the main loop
-// function needed to keep this library operating. 
-// A client application will typically call this from its Arduino loop() function
-void DonaldWIFI::Loop() {
-	
-  // Report Wifi heartbeat mqtt message
-  int64_t now = esp_timer_get_time();
-  if (now - previousWiFiStrengthMillis >= WifiStrengthInterval)
-  {
-    previousWiFiStrengthMillis = now;
-  
-    if(autoUpdate)
+void DonaldWIFI::reportWifiStatusTimerTask(void* arg)
+{
+	((DonaldWIFI*)arg)->ReportWifiStatus();
+}
+
+void DonaldWIFI::ReportWifiStatus()
+{
+	if(autoUpdate)
     {
       PublishHeartbeat();
       CheckForUpdates();
     }
-  }
-
-  now = esp_timer_get_time();
-  if (now - previousMQTTConnectPollMillis >= MQTTConnectPollInterval)
-  {
-    previousMQTTConnectPollMillis = now;
-    // If MQTT disconnects we stop getting messages for topics we have subscribed to, for example the commands topic
-    // It's important to always be connected:
-    mQTTReconnect();
-  }
 }
 
+void DonaldWIFI::mQTTReconnectTimerTask(void* arg)
+{
+	((DonaldWIFI*)arg)->mQTTReconnect();
+}
+
+
+// Does nothing. Retained for compatibility with Arduino SDK implmentation, where this method must be called
+// regularly to feed this library.
+void DonaldWIFI::Loop() {  
+}
 // ********************* WIFI RELATED **********************************
 void DonaldWIFI::Begin()
 {
-    ESP_ERROR_CHECK(example_wifi_connect());
+    ESP_ERROR_CHECK(wifi_connect());
 }
 
 /**
@@ -192,12 +182,12 @@ void DonaldWIFI::Begin()
  * All netifs created withing common connect component are prefixed with the module TAG,
  * so it returns true if the specified netif is owned by this module
  */
-bool DonaldWIFI::example_is_our_netif(const char *prefix, esp_netif_t *netif)
+bool DonaldWIFI::is_our_netif(const char *prefix, esp_netif_t *netif)
 {
     return strncmp(prefix, esp_netif_get_desc(netif), strlen(prefix) - 1) == 0;
 }
 
-void DonaldWIFI::example_handler_on_wifi_disconnect(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+void DonaldWIFI::on_wifi_disconnect(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     s_retry_num++;
     if (s_retry_num > CONFIG_EXAMPLE_WIFI_CONN_MAX_RETRY) {
@@ -217,17 +207,17 @@ void DonaldWIFI::example_handler_on_wifi_disconnect(void *arg, esp_event_base_t 
     ESP_ERROR_CHECK(err);
 }
 
-void DonaldWIFI::example_handler_on_wifi_connect(void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data)
+void DonaldWIFI::on_wifi_connect(void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
 }
 
 // Callback which is called when we are assigned an IP address or the IP address changes
-void DonaldWIFI::example_handler_on_sta_got_ip(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+void DonaldWIFI::on_sta_got_ip(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
 
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-    if (!example_is_our_netif(EXAMPLE_NETIF_DESC_STA, event->esp_netif)) {
+    if (!is_our_netif(EXAMPLE_NETIF_DESC_STA, event->esp_netif)) {
         return;
     }
     ESP_LOGI(TAG, "Received IPv4 event: Interface \"%s\" address: " IPSTR, esp_netif_get_desc(event->esp_netif), IP2STR(&event->ip_info.ip));
@@ -244,11 +234,11 @@ void DonaldWIFI::example_handler_on_sta_got_ip(void *arg, esp_event_base_t event
     }
 }
 
-esp_err_t DonaldWIFI::example_wifi_connect(void)
+esp_err_t DonaldWIFI::wifi_connect(void)
 {
 	// C:\Espressif\frameworks\esp-idf\components\esp_wifi\include\esp_wifi_types.h
     ESP_LOGI(TAG, "Start example_connect.");
-    example_wifi_start();
+    wifi_start();
 	
 	wifi_sta_config_t sta_config;
 
@@ -263,10 +253,10 @@ esp_err_t DonaldWIFI::example_wifi_connect(void)
         .sta = sta_config,
     };
 
-    return example_wifi_sta_do_connect(wifi_config, true);
+    return wifi_sta_do_connect(wifi_config, true);
 }
 
-void DonaldWIFI::example_wifi_start(void)
+void DonaldWIFI::wifi_start(void)
 {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -283,7 +273,7 @@ void DonaldWIFI::example_wifi_start(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-void DonaldWIFI::example_wifi_stop(void)
+void DonaldWIFI::wifi_stop(void)
 {
     esp_err_t err = esp_wifi_stop();
     if (err == ESP_ERR_WIFI_NOT_INIT) {
@@ -296,7 +286,7 @@ void DonaldWIFI::example_wifi_stop(void)
     s_example_sta_netif = NULL;
 }
 
-esp_err_t DonaldWIFI::example_wifi_sta_do_connect(wifi_config_t wifi_config, bool wait)
+esp_err_t DonaldWIFI::wifi_sta_do_connect(wifi_config_t wifi_config, bool wait)
 {
     if (wait) {
         s_semph_get_ip_addrs = xSemaphoreCreateBinary();
@@ -305,9 +295,9 @@ esp_err_t DonaldWIFI::example_wifi_sta_do_connect(wifi_config_t wifi_config, boo
         }
     }
     s_retry_num = 0;
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &example_handler_on_wifi_disconnect, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &example_handler_on_sta_got_ip, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &example_handler_on_wifi_connect, s_example_sta_netif));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &on_wifi_disconnect, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_sta_got_ip, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &on_wifi_connect, s_example_sta_netif));
 
 
     ESP_LOGI(TAG, "Connecting to %s...", wifi_config.sta.ssid);
@@ -469,7 +459,7 @@ void DonaldWIFI::processCommand(string commandstring)
 void DonaldWIFI::OnMQTTCommand(commandFunction commandCallback)
 {
   MQTTCommands.push_back(commandCallback);
-  DebugMessage("Added command handler, total command handlers = " + to_string(MQTTCommands.size()));
+  ESP_LOGI(TAG, "Added command handler, total command handlers = %u", MQTTCommands.size());
 }
 
 // Attempts to reconnect to the MQTT server if it is not connected already.
@@ -495,7 +485,6 @@ void DonaldWIFI::mQTTReconnect()
 
 void DonaldWIFI::Subscribe(string topic)
 {
-  DebugMessage("Subscribing to topic " + topic);
   int msg_id = esp_mqtt_client_subscribe(mqttClient, topic.c_str(), 0);
   ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 }
@@ -504,7 +493,7 @@ void DonaldWIFI::Subscribe(string topic)
 bool DonaldWIFI::MQTTPublish(string topic, string payload)
 {
     bool result = false;
-    DebugMessage("MQTTPublish topic: " + topic + " Payload: " + payload + "\n");
+	ESP_LOGI(TAG, "MQTTPublish topic: %s Payload: %s", topic.c_str(), payload.c_str());
 
     if (!cachedMQTTConnected)
     {
@@ -519,12 +508,12 @@ bool DonaldWIFI::MQTTPublish(string topic, string payload)
 
       if(pubResult > -1)
       {
-        DebugMessage("MQTT publish succeeded, topic: " + topic + " Payload: " + payload + "\n");
+		ESP_LOGI(TAG, "MQTT publish succeeded, topic: %s Payload: %s", topic.c_str(), payload.c_str());
 		result = true;
       }
       else
       {
-        DebugMessage("MQTT publish failed, topic: " + topic + " Payload: " + payload + " MQTT Server: " + string(mQTTServer) + " result: " + to_string(result) + "\n");
+		ESP_LOGE(TAG, "MQTT publish failed, topic: %s Payload: %s", topic.c_str(), payload.c_str());
       }
     }
     return result;
@@ -542,7 +531,7 @@ string DonaldWIFI::getWifiJSON()
   const int64_t dayDivider = hourDivider * 24;
   int64_t now = esp_timer_get_time();
   
-  // Get the BSSID of the wifi access point we ae connected to
+  // Get the BSSID of the wifi access point we are connected to
   wifi_ap_record_t info;
   char bssidChars[18] = { 0 };
   if(!esp_wifi_sta_get_ap_info(&info)) {
