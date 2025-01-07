@@ -514,6 +514,11 @@ bool DonaldWIFI::MQTTPublish(string topic, string payload)
     return result;
 }
 
+int32_t DonaldWIFI::GetRSSI()
+{
+	return cachedRSSI;
+}
+
 // Returns a json document containing device location information
 // Needs to include the time as retrieved from the satellite network so that 
 // fixes from different gps devices can be correlated against each other
@@ -533,6 +538,8 @@ string DonaldWIFI::getWifiJSON()
       sprintf(bssidChars, "%02X:%02X:%02X:%02X:%02X:%02X", info.bssid[0], info.bssid[1], info.bssid[2], info.bssid[3], info.bssid[4], info.bssid[5]);
   }
 
+  cachedRSSI = info.rssi;
+  
   string retVal = "{";
   retVal = retVal + "\"device\": \"" + mQTTClientID + "\"";
   retVal = retVal + ",\"MAC\": \"" + MAC + "\"";
