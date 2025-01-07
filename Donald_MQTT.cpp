@@ -166,11 +166,6 @@ void DonaldWIFI::mQTTReconnectTimerTask(void* arg)
 	((DonaldWIFI*)arg)->mQTTReconnect();
 }
 
-
-// Does nothing. Retained for compatibility with Arduino SDK implmentation, where this method must be called
-// regularly to feed this library.
-void DonaldWIFI::Loop() {  
-}
 // ********************* WIFI RELATED **********************************
 void DonaldWIFI::Begin()
 {

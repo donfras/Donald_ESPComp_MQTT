@@ -19,7 +19,6 @@ class DonaldWIFI
     DonaldWIFI(string clientID);
 	
     void Begin();
-    void Loop();
     bool MQTTPublish(string topic, string payload);
     void SetOTAParameters(string serverBaseUrl, string componentName, int currentVersion = 1, bool autoUpdate = true);
     void CheckForUpdates();
@@ -69,7 +68,7 @@ class DonaldWIFI
     int32_t cachedRSSI;
     const string ssid = "BT-CKF95Z"; 
     const char* password = "Tx7cKXMTknmdPr";
-    const char* mQTTServer = "pimqttserver";
+    const char* mQTTServer = "pimqttserver.local";
     const int mQTTPort = 1883;
     string MAC;
 	esp_timer_handle_t reportWifiStatusTimer;
