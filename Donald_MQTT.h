@@ -10,7 +10,7 @@
 using namespace std;
 
 typedef  void (*commandFunction)(string command);
-typedef  void (*debugMessageFunction)(string debugMessage);
+typedef  void (*voidFunction)(void);
 
 class DonaldWIFI
 {
@@ -23,14 +23,17 @@ class DonaldWIFI
     void SetOTAParameters(string serverBaseUrl, string componentName, int currentVersion = 1, bool autoUpdate = true);
     void CheckForUpdates();
     void PublishHeartbeat();
-    void OnMQTTCommand(commandFunction);
     int32_t GetRSSI(void);
     bool GetMQTTConnected(void);
 	void CreateTimer(esp_timer_handle_t timer, esp_timer_cb_t callback, uint64_t period, const char* debugName);
-	
+    
+    // Call back registration methods
+    void OnMQTTCommand(commandFunction);
+	void OnNetworkChange(voidFunction);
   private:
   
     static void processCommand(string commandstring);
+    static void notifyNetworkChanged(void);
 	static void mQTTCallback(char* topic, unsigned int topicLength, char* payload, unsigned int payLoadLength);
 	static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 	static void log_error_if_nonzero(const char *message, int error_code);
@@ -41,6 +44,8 @@ class DonaldWIFI
 	static void reportWifiStatusTimerTask(void* arg);
 	static void mQTTReconnectTimerTask(void* arg);
 	static std::vector <commandFunction> MQTTCommands;
+    static std::vector <voidFunction> networkChangedCallbacks;
+
     static const string commandsTopicBase;
     static string commandsTopic;
 	inline static bool cachedMQTTConnected = false;

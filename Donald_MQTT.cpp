@@ -22,6 +22,7 @@ static const char *TAG = "donald_mqtt";
 const string DonaldWIFI::commandsTopicBase = "sensors/commands";
 string DonaldWIFI::commandsTopic = "sensors/commands";
 std::vector <commandFunction> DonaldWIFI::MQTTCommands = * new std::vector <commandFunction>();
+std::vector <voidFunction> DonaldWIFI::networkChangedCallbacks = * new std::vector <voidFunction>();
 
 #define CONFIG_EXAMPLE_WIFI_CONN_MAX_RETRY 6
 // ************************ Topic ****************************
@@ -209,7 +210,6 @@ void DonaldWIFI::on_wifi_connect(void *esp_netif, esp_event_base_t event_base, i
 // Callback which is called when we are assigned an IP address or the IP address changes
 void DonaldWIFI::on_sta_got_ip(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     if (!is_our_netif(EXAMPLE_NETIF_DESC_STA, event->esp_netif)) {
@@ -227,12 +227,14 @@ void DonaldWIFI::on_sta_got_ip(void *arg, esp_event_base_t event_base, int32_t e
     } else {
         ESP_LOGI(TAG, "- IPv4 address: " IPSTR ",", IP2STR(&event->ip_info.ip));
     }
+
+    notifyNetworkChanged();
 }
 
 esp_err_t DonaldWIFI::wifi_connect(void)
 {
 	// C:\Espressif\frameworks\esp-idf\components\esp_wifi\include\esp_wifi_types.h
-    ESP_LOGI(TAG, "Start example_connect.");
+    ESP_LOGI(TAG, "wifi_connect");
     wifi_start();
 	
 	wifi_sta_config_t sta_config;
@@ -248,7 +250,7 @@ esp_err_t DonaldWIFI::wifi_connect(void)
         .sta = sta_config,
     };
 
-    return wifi_sta_do_connect(wifi_config, true);
+    return wifi_sta_do_connect(wifi_config, false); // Don't wait for IP to be assigned, block calling app for minimum time
 }
 
 void DonaldWIFI::wifi_start(void)
@@ -448,6 +450,16 @@ void DonaldWIFI::processCommand(string commandstring)
   }
 }
 
+void DonaldWIFI::notifyNetworkChanged()
+{
+      // Call each registered network changed callback
+    for (unsigned int i = 0; i < networkChangedCallbacks.size(); i++)
+    {
+      voidFunction networkChangedCallback = networkChangedCallbacks[i];
+      networkChangedCallback();
+    }
+}
+
 // Registers a command handler to be called every time a MQTT message is received
 // on the command topic. Clients of this library call this function and provide
 // a pointer to a callback function, which is to be called to process commands
@@ -455,6 +467,15 @@ void DonaldWIFI::OnMQTTCommand(commandFunction commandCallback)
 {
   MQTTCommands.push_back(commandCallback);
   ESP_LOGI(TAG, "Added command handler, total command handlers = %u", MQTTCommands.size());
+}
+
+void DonaldWIFI::OnNetworkChange(voidFunction networkChangedCallback)
+{
+  if(networkChangedCallback)
+  {
+    networkChangedCallbacks.push_back(networkChangedCallback);
+    ESP_LOGI(TAG, "Added network changed callback, total callbacks = %u", networkChangedCallbacks.size());
+  }
 }
 
 // Attempts to reconnect to the MQTT server if it is not connected already.
