@@ -170,12 +170,12 @@ void DonaldWIFI::mQTTReconnectTimerTask(void* arg)
 // ********************* WIFI RELATED **********************************
 void DonaldWIFI::Begin()
 {
-    ESP_ERROR_CHECK(wifi_connect());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(wifi_connect());
 }
 
 /**
  * @brief Checks the netif description if it contains specified prefix.
- * All netifs created withing common connect component are prefixed with the module TAG,
+ * All netifs created withing common ESP_ERROR_CHECK_WITHOUT_ABORTconnect component are prefixed with the module TAG,
  * so it returns true if the specified netif is owned by this module
  */
 bool DonaldWIFI::is_our_netif(const char *prefix, esp_netif_t *netif)
@@ -245,7 +245,8 @@ esp_err_t DonaldWIFI::wifi_connect(void)
 	sta_config.sort_method = EXAMPLE_WIFI_CONNECT_AP_SORT_METHOD;
 	sta_config.threshold.rssi = 80;
 	sta_config.threshold.authmode = EXAMPLE_WIFI_SCAN_AUTH_MODE_THRESHOLD;
-	
+	sta_config.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
+  sta_config.sae_pk_mode = WPA3_SAE_PK_MODE_DISABLED;
     wifi_config_t wifi_config = {
         .sta = sta_config,
     };
@@ -298,7 +299,7 @@ esp_err_t DonaldWIFI::wifi_sta_do_connect(wifi_config_t wifi_config, bool wait)
 
 
     ESP_LOGI(TAG, "Connecting to %s...", wifi_config.sta.ssid);
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     esp_err_t ret = esp_wifi_connect();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "WiFi connect failed! ret:%x", ret);
