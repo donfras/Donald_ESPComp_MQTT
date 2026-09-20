@@ -73,7 +73,9 @@ class DonaldWIFI
     int32_t cachedRSSI;
     const string ssid = "BT-CKF95Z"; 
     const char* password = "Tx7cKXMTknmdPr";
-    const char* mQTTServer = "pimqttserver.local";
+    //const char* mQTTServer = "pimqttserver.local";
+    const char* mQTTServer = "pimqttserver.home";
+	//const char* mQTTServer = "pimqttserver";
     const int mQTTPort = 1883;
     string MAC;
 	esp_timer_handle_t reportWifiStatusTimer;
