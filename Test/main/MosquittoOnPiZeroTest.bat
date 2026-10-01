@@ -1,0 +1,1 @@
+start "subscribe to wifi strength" powershell.exe -file mqtt_sub.ps1 -topic "wifi/#"

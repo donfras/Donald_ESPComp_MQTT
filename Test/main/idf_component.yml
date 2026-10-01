@@ -1,0 +1,8 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: ">=4.1.0"
+  Donald_ESPComp_MQTT:
+    version: "=0.0.1"
+    path: ../../Donald_ESPComp_MQTT

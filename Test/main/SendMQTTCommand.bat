@@ -1,0 +1,1 @@
+start "publish on MQTTTest" "C:\Program Files\mosquitto\mosquitto_pub.exe" -h pimqttserver -t sensors/commands/MQTTTest -q 1 -m "Restart"
