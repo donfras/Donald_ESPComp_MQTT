@@ -8,9 +8,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "freertos/queue.h"
 
 #include "lwip/sockets.h"
 #include "lwip/dns.h"
@@ -38,12 +36,11 @@ static int s_retry_num = 0;
 static esp_netif_t *s_example_sta_netif = NULL;
 static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
 
-#define EXAMPLE_WIFI_SCAN_METHOD WIFI_FAST_SCAN
-#define EXAMPLE_WIFI_CONNECT_AP_SORT_METHOD WIFI_CONNECT_AP_BY_SIGNAL
-#define EXAMPLE_NETIF_DESC_STA "example_netif_sta"
-#define EXAMPLE_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WEP
-#define EXAMPLE_ESP_WIFI_SSID      "BT-CKF95Z"
-#define EXAMPLE_ESP_WIFI_PASS      "Tx7cKXMTknmdPr"
+#define WIFI_SCAN_METHOD WIFI_FAST_SCAN
+#define WIFI_CONNECT_AP_SORT_METHOD WIFI_CONNECT_AP_BY_SIGNAL
+#define WIFI_NETIF_DESC_STA "example_netif_sta"
+#define WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WEP
+#define WIFI_CONN_MAX_RETRY 5
 
 DonaldWIFI::DonaldWIFI(string clientID) 
             :  cachedRSSI(-100), WifiStrengthInterval(30000000), MQTTConnectPollInterval(10000000), autoUpdate(false)
@@ -212,7 +209,7 @@ void DonaldWIFI::on_sta_got_ip(void *arg, esp_event_base_t event_base, int32_t e
 {
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-    if (!is_our_netif(EXAMPLE_NETIF_DESC_STA, event->esp_netif)) {
+    if (!is_our_netif(WIFI_NETIF_DESC_STA, event->esp_netif)) {
         return;
     }
     ESP_LOGI(TAG, "Received IPv4 event: Interface \"%s\" address: " IPSTR, esp_netif_get_desc(event->esp_netif), IP2STR(&event->ip_info.ip));
@@ -239,12 +236,13 @@ esp_err_t DonaldWIFI::wifi_connect(void)
 	
 	wifi_sta_config_t sta_config;
 
-	memcpy(sta_config.ssid, EXAMPLE_ESP_WIFI_SSID, sizeof(EXAMPLE_ESP_WIFI_SSID));
-	memcpy(sta_config.password, EXAMPLE_ESP_WIFI_PASS, sizeof(EXAMPLE_ESP_WIFI_PASS));
-	sta_config.scan_method = EXAMPLE_WIFI_SCAN_METHOD;
-	sta_config.sort_method = EXAMPLE_WIFI_CONNECT_AP_SORT_METHOD;
+	memcpy(sta_config.ssid, ssid.c_str(), ssid.length() + 1);
+	memcpy(sta_config.password, password.c_str(), password.length() + 1);
+	sta_config.scan_method = WIFI_SCAN_METHOD;
+	sta_config.sort_method = WIFI_CONNECT_AP_SORT_METHOD;
 	sta_config.threshold.rssi = 80;
-	sta_config.threshold.authmode = EXAMPLE_WIFI_SCAN_AUTH_MODE_THRESHOLD;
+	sta_config.threshold.authmode = WIFI_SCAN_AUTH_MODE_THRESHOLD;
+	sta_config.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
 	sta_config.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
   sta_config.sae_pk_mode = WPA3_SAE_PK_MODE_DISABLED;
     wifi_config_t wifi_config = {
@@ -261,7 +259,7 @@ void DonaldWIFI::wifi_start(void)
 
     esp_netif_inherent_config_t esp_netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_STA();
     // Warning: the interface desc is used in tests to capture actual connection details (IP, gw, mask)
-    esp_netif_config.if_desc = EXAMPLE_NETIF_DESC_STA;
+    esp_netif_config.if_desc = WIFI_NETIF_DESC_STA;
     esp_netif_config.route_prio = 128;
     s_example_sta_netif = esp_netif_create_wifi(WIFI_IF_STA, &esp_netif_config);
     esp_wifi_set_default_wifi_sta_handlers();

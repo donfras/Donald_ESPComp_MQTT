@@ -72,7 +72,7 @@ class DonaldWIFI
     esp_mqtt_client_handle_t mqttClient;
     int32_t cachedRSSI;
     const string ssid = "BT-CKF95Z"; 
-    const char* password = "Tx7cKXMTknmdPr";
+    const string password = "Tx7cKXMTknmdPr";
     //const char* mQTTServer = "pimqttserver.local";
     const char* mQTTServer = "pimqttserver.home";
 	//const char* mQTTServer = "pimqttserver";
